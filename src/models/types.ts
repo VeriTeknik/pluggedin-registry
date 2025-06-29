@@ -56,7 +56,9 @@ export interface IServerMetadata {
   verified: boolean;
   github_stars?: number;
   download_count?: number;
+  install_count?: number;
   last_crawled?: Date;
+  last_updated?: Date;
   installation_count?: number;
   rating?: number;
   rating_count?: number;

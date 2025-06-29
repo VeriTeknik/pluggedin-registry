@@ -137,44 +137,6 @@ export class SearchService {
     }
   }
 
-  /**
-   * Index a server in Elasticsearch
-   */
-  async indexServer(server: IMcpServerDocument): Promise<void> {
-    try {
-      const latestVersion = server.getLatestVersion();
-      
-      const doc = {
-        name: server.name,
-        description: server.description,
-        category: server.metadata.category,
-        tags: server.metadata.tags || [],
-        source: server.source,
-        external_id: server.external_id,
-        trust_score: server.metadata.trust_score,
-        github_stars: server.metadata.github_stars || 0,
-        download_count: server.metadata.download_count || 0,
-        rating: server.metadata.rating || 0,
-        verified: server.metadata.verified,
-        repository: server.repository,
-        version: latestVersion?.version,
-        updated_at: server.updated_at,
-        created_at: server.created_at,
-      };
-
-      await this.getClient().index({
-        index: this.indexName,
-        id: server._id?.toString() || '',
-        body: doc,
-        refresh: 'wait_for',
-      });
-
-      logger.debug('Indexed server in Elasticsearch', { serverId: server._id });
-    } catch (error) {
-      logger.error('Failed to index server:', error);
-      throw error;
-    }
-  }
 
   /**
    * Remove a server from Elasticsearch index
@@ -300,6 +262,65 @@ export class SearchService {
       .map(([k, v]) => `${k}:${v}`)
       .join('|');
     return `search:${key}`;
+  }
+
+  /**
+   * Index a single server
+   */
+  async indexServer(server: IMcpServerDocument): Promise<void> {
+    if (!server._id) return;
+
+    try {
+      const doc = {
+        id: server._id.toString(),
+        name: server.name,
+        description: server.description,
+        category: server.metadata.category,
+        tags: server.metadata.tags,
+        source: server.source,
+        external_id: server.external_id,
+        trust_score: server.metadata.trust_score,
+        github_stars: server.metadata.github_stars,
+        download_count: server.metadata.download_count,
+        rating: server.metadata.rating,
+        verified: server.metadata.verified,
+        updated_at: server.metadata.last_updated || server.updated_at,
+        created_at: server.created_at,
+      };
+
+      await this.getClient().index({
+        index: this.indexName,
+        id: server._id.toString(),
+        body: doc,
+        refresh: true, // Make it immediately searchable
+      });
+
+      logger.info('Server indexed successfully', { serverId: server._id, name: server.name });
+    } catch (error) {
+      logger.error('Failed to index server:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a server from the index
+   */
+  async deleteServer(serverId: string): Promise<void> {
+    try {
+      await this.getClient().delete({
+        index: this.indexName,
+        id: serverId,
+        refresh: true,
+      });
+
+      logger.info('Server deleted from index', { serverId });
+    } catch (error) {
+      // Ignore 404 errors (already deleted)
+      if (error && typeof error === 'object' && 'statusCode' in error && error.statusCode !== 404) {
+        logger.error('Failed to delete server from index:', error);
+        throw error;
+      }
+    }
   }
 
   /**

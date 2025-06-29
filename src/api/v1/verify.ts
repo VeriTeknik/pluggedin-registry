@@ -1,7 +1,9 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { strictRateLimiter } from '../../middleware/rateLimiter';
-import { ValidationError, UnauthorizedError } from '../../middleware/errorHandler';
+import { UnauthorizedError } from '../../middleware/errorHandler';
+import { validateBody } from '../../middleware/validation';
 import { logger } from '../../utils/logger';
+import { domainVerificationSchema, githubVerificationSchema } from '../../validation/schemas';
 
 const router = Router();
 
@@ -12,7 +14,7 @@ router.use(strictRateLimiter);
  * POST /api/v1/verify/domain
  * Verify domain ownership via DNS TXT record
  */
-router.post('/domain', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/domain', validateBody(domainVerificationSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     // TODO: Implement authentication
     const authHeader = req.headers.authorization;
@@ -21,10 +23,6 @@ router.post('/domain', async (req: Request, res: Response, next: NextFunction) =
     }
 
     const { domain } = req.body;
-
-    if (!domain) {
-      throw new ValidationError('Domain is required');
-    }
 
     // TODO: Implement domain verification logic
     logger.info('Verifying domain:', { domain });
@@ -47,7 +45,7 @@ router.post('/domain', async (req: Request, res: Response, next: NextFunction) =
  * POST /api/v1/verify/github
  * Verify GitHub organization membership
  */
-router.post('/github', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/github', validateBody(githubVerificationSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     // TODO: Implement authentication
     const authHeader = req.headers.authorization;
@@ -56,10 +54,6 @@ router.post('/github', async (req: Request, res: Response, next: NextFunction) =
     }
 
     const { organization, repository } = req.body;
-
-    if (!organization || !repository) {
-      throw new ValidationError('Organization and repository are required');
-    }
 
     // TODO: Implement GitHub verification logic
     logger.info('Verifying GitHub:', { organization, repository });
