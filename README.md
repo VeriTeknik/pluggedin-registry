@@ -9,7 +9,8 @@ This microservice provides:
 - 📊 Multi-factor ranking algorithm
 - 🗄️ MongoDB-based registry storage
 - ⚡ Redis caching for performance
-- 🔐 Publisher verification system
+- 🔐 Server claiming and ownership system
+- 🌐 Hybrid public/private API architecture
 - 🤖 AI-powered configuration extraction (planned)
 - 🔗 GitHub integration for repository scanning
 
@@ -66,21 +67,43 @@ The API will be available at http://localhost:3001
 
 ## API Endpoints
 
-### Search
+### Public Endpoints (No Authentication Required)
+
+#### Search
 - `GET /api/v1/search` - Search MCP servers
-- `GET /api/v1/search/suggestions` - Get search suggestions
-- `GET /api/v1/search/facets` - Get available filters
 
-### Registry
-- `POST /api/v1/registry/publish` - Publish a new server
-- `GET /api/v1/registry/servers/:id` - Get server details
-- `PUT /api/v1/registry/servers/:id` - Update server
-- `DELETE /api/v1/registry/servers/:id` - Delete server
+#### Discover
+- `GET /api/v1/discover/featured` - Get featured servers
+- `GET /api/v1/discover/trending` - Get trending servers
+- `GET /api/v1/discover/recent` - Get recently added servers
+- `GET /api/v1/discover/categories` - Get server categories
+- `GET /api/v1/discover/stats` - Get registry statistics
 
-### Verification
-- `POST /api/v1/verify/domain` - Verify domain ownership
-- `POST /api/v1/verify/github` - Verify GitHub organization
-- `GET /api/v1/verify/status` - Check verification status
+#### Servers
+- `GET /api/v1/servers/:id` - Get server details
+- `GET /api/v1/servers` - List recent servers
+
+### Internal Endpoints (Authentication Required)
+
+All internal endpoints require:
+- `x-api-key` header with the internal API key
+- `x-user-id` header with the user ID from pluggedin-app
+
+#### Registry Management
+- `POST /api/v1/internal/registry/publish` - Publish a new server
+- `PUT /api/v1/internal/registry/:id` - Update a server
+- `DELETE /api/v1/internal/registry/:id` - Delete a server
+- `POST /api/v1/internal/registry/:id/version` - Add a new version
+
+#### Server Claiming
+- `GET /api/v1/internal/claim/unclaimed` - Get unclaimed servers
+- `GET /api/v1/internal/claim/my-servers` - Get servers claimed by user
+- `POST /api/v1/internal/claim/:id` - Claim a server
+- `DELETE /api/v1/internal/claim/:id` - Unclaim a server
+
+#### Verification
+- `POST /api/v1/internal/verify/github` - Verify GitHub repository
+- `POST /api/v1/internal/verify/npm` - Verify NPM package
 
 ## Search Features
 

@@ -59,11 +59,18 @@ export interface IServerMetadata {
   install_count?: number;
   last_crawled?: Date;
   last_updated?: Date;
+  last_scanned?: Date;
   installation_count?: number;
   rating?: number;
   rating_count?: number;
   tags?: string[];
   category?: string;
+  ai_extraction?: {
+    confidence_score: number;
+    extracted_at: Date;
+    source_files: string[];
+    raw_config?: any;
+  };
 }
 
 export interface IPublisher {

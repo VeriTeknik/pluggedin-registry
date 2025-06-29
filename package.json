@@ -26,6 +26,9 @@
   "license": "Apache-2.0",
   "dependencies": {
     "@elastic/elasticsearch": "^8.11.0",
+    "@octokit/app": "^16.0.1",
+    "@octokit/webhooks": "^14.0.2",
+    "@types/jsonwebtoken": "^9.0.10",
     "axios": "^1.6.0",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
@@ -34,6 +37,7 @@
     "express-rate-limit": "^7.1.0",
     "helmet": "^7.1.0",
     "joi": "^17.13.3",
+    "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.0",
     "redis": "^4.6.0",
     "winston": "^3.11.0"

@@ -7,6 +7,7 @@ import { createServer } from 'http';
 import { connectMongoDB } from './services/mongodb';
 import { connectElasticsearch } from './services/elasticsearch';
 import { connectRedis } from './services/redis';
+import { initializeGitHubService } from './services/github.service';
 import { logger } from './utils/logger';
 import { errorHandler } from './middleware/errorHandler';
 import { rateLimiter } from './middleware/rateLimiter';
@@ -65,6 +66,18 @@ async function startServer() {
 
     await connectRedis();
     logger.info('Redis connected');
+
+    // Initialize GitHub service if credentials are provided
+    if (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY) {
+      initializeGitHubService({
+        appId: process.env.GITHUB_APP_ID,
+        privateKey: process.env.GITHUB_APP_PRIVATE_KEY,
+        clientId: process.env.GITHUB_CLIENT_ID || '',
+        clientSecret: process.env.GITHUB_CLIENT_SECRET || '',
+        webhookSecret: process.env.GITHUB_WEBHOOK_SECRET,
+      });
+      logger.info('GitHub service initialized');
+    }
 
     // Start HTTP server
     httpServer.listen(PORT, () => {

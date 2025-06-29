@@ -104,6 +104,7 @@ const ServerMetadataSchema = new Schema<IServerMetadata>({
   github_stars: Number,
   download_count: Number,
   last_crawled: Date,
+  last_scanned: Date,
   installation_count: {
     type: Number,
     default: 0,
@@ -119,6 +120,16 @@ const ServerMetadataSchema = new Schema<IServerMetadata>({
   },
   tags: [String],
   category: String,
+  ai_extraction: {
+    confidence_score: {
+      type: Number,
+      min: 0,
+      max: 1,
+    },
+    extracted_at: Date,
+    source_files: [String],
+    raw_config: Schema.Types.Mixed,
+  },
 });
 
 const McpServerSchema = new Schema<IMcpServerDocument>({

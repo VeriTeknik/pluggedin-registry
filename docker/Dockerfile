@@ -21,8 +21,8 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init
+# Install dumb-init for proper signal handling and Python for AI extraction
+RUN apk add --no-cache dumb-init python3 py3-pip
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
@@ -37,6 +37,13 @@ RUN npm ci --only=production && \
 
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
+
+# Copy Python scripts and requirements
+COPY requirements.txt ./
+COPY src/scripts/extract_config.py ./dist/scripts/
+
+# Install Python dependencies
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Create logs directory
 RUN mkdir -p logs && chown -R nodejs:nodejs logs
