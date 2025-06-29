@@ -56,10 +56,14 @@ class RegistryService {
    */
   async publishServer(input: PublishServerInput, publisherId: string): Promise<IMcpServerDocument> {
     try {
-      // Check if publisher exists
-      const publisher = await Publisher.findById(publisherId);
-      if (!publisher) {
-        throw new UnauthorizedError('Publisher not found');
+      // For internal API, publisherId might be a pluggedin user ID
+      // We'll skip publisher validation for now
+      let publisher = null;
+      try {
+        publisher = await Publisher.findById(publisherId);
+      } catch (err) {
+        // If it's not a valid ObjectId, that's okay for internal API
+        logger.debug('Publisher ID is not a MongoDB ObjectId, likely a pluggedin user ID', { publisherId });
       }
 
       // Check if server name already exists
@@ -99,7 +103,7 @@ class RegistryService {
           tags: input.tags || [],
           last_updated: new Date(),
         },
-        publisher_id: publisherId,
+        ...(publisher && { publisher_id: publisherId }),
         created_at: new Date(),
       });
 

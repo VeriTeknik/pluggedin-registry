@@ -1,11 +1,11 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { searchRateLimiter } from '../../middleware/rateLimiter';
-import { ValidationError } from '../../middleware/errorHandler';
-import { validateQuery } from '../../middleware/validation';
-import { logger } from '../../utils/logger';
-import { searchService } from '../../services/search.service';
-import { McpServerSource } from '../../models';
-import { searchQuerySchema, suggestionsQuerySchema } from '../../validation/schemas';
+import { searchRateLimiter } from '../../../middleware/rateLimiter';
+import { ValidationError } from '../../../middleware/errorHandler';
+import { validateQuery } from '../../../middleware/validation';
+import { logger } from '../../../utils/logger';
+import { searchService } from '../../../services/search.service';
+import { McpServerSource, IMcpServerDocument } from '../../../models';
+import { searchQuerySchema, suggestionsQuerySchema } from '../../../validation/schemas';
 
 const router = Router();
 
@@ -51,7 +51,7 @@ router.get('/', validateQuery(searchQuerySchema), async (req: Request, res: Resp
 
     // Transform results for API response
     const response = {
-      results: searchResults.results.map(server => ({
+      results: searchResults.results.map((server: IMcpServerDocument) => ({
         id: server._id,
         name: server.name,
         description: server.description,

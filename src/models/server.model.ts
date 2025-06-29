@@ -146,6 +146,11 @@ const McpServerSchema = new Schema<IMcpServerDocument>({
     type: Schema.Types.ObjectId,
     ref: 'Publisher',
   },
+  claimed_by: {
+    type: String, // pluggedin-app user ID
+    index: true,
+  },
+  claimed_at: Date,
   versions: {
     type: [ServerVersionSchema],
     required: true,

@@ -12,7 +12,12 @@ interface SearchQuery {
   tags?: string[];
   offset?: number;
   limit?: number;
-  sort?: 'relevance' | 'stars' | 'downloads' | 'rating' | 'updated';
+  sort?: 'relevance' | 'stars' | 'downloads' | 'rating' | 'updated' | 'created_at';
+  filters?: {
+    source?: string;
+    unclaimed?: boolean;
+    claimed_by?: string;
+  };
 }
 
 interface SearchResult {
@@ -52,6 +57,7 @@ export class SearchService {
       offset = 0,
       limit = 20,
       sort = 'relevance',
+      filters = {},
     } = params;
 
     // Generate cache key
@@ -71,6 +77,7 @@ export class SearchService {
         verified,
         source,
         tags,
+        ...filters,
       });
 
       // Determine sort order
@@ -221,6 +228,14 @@ export class SearchService {
       filter.push({ terms: { tags: filters.tags } });
     }
 
+    if (filters.unclaimed === true) {
+      filter.push({ bool: { must_not: { exists: { field: 'claimed_by' } } } });
+    }
+
+    if (filters.claimed_by) {
+      filter.push({ term: { claimed_by: filters.claimed_by } });
+    }
+
     // Construct final query
     if (must.length === 0 && filter.length === 0) {
       return { match_all: {} };
@@ -284,6 +299,8 @@ export class SearchService {
         download_count: server.metadata.download_count,
         rating: server.metadata.rating,
         verified: server.metadata.verified,
+        claimed_by: server.claimed_by,
+        claimed_at: server.claimed_at,
         updated_at: server.metadata.last_updated || server.updated_at,
         created_at: server.created_at,
       };
@@ -348,6 +365,8 @@ export class SearchService {
               download_count: { type: 'integer' },
               rating: { type: 'float' },
               verified: { type: 'boolean' },
+              claimed_by: { type: 'keyword' },
+              claimed_at: { type: 'date' },
               updated_at: { type: 'date' },
               created_at: { type: 'date' },
             },

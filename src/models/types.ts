@@ -82,6 +82,8 @@ export interface IMcpServer {
   source: McpServerSource;
   external_id: string;
   publisher_id?: string;
+  claimed_by?: string;
+  claimed_at?: Date;
   versions: IServerVersion[];
   repository?: IRepository;
   capabilities: ICapabilities;

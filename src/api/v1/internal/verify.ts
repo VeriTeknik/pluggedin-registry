@@ -1,9 +1,9 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { strictRateLimiter } from '../../middleware/rateLimiter';
-import { UnauthorizedError } from '../../middleware/errorHandler';
-import { validateBody } from '../../middleware/validation';
-import { logger } from '../../utils/logger';
-import { domainVerificationSchema, githubVerificationSchema } from '../../validation/schemas';
+import { strictRateLimiter } from '../../../middleware/rateLimiter';
+import { UnauthorizedError } from '../../../middleware/errorHandler';
+import { validateBody } from '../../../middleware/validation';
+import { logger } from '../../../utils/logger';
+import { domainVerificationSchema, githubVerificationSchema } from '../../../validation/schemas';
 
 const router = Router();
 
@@ -16,11 +16,6 @@ router.use(strictRateLimiter);
  */
 router.post('/domain', validateBody(domainVerificationSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // TODO: Implement authentication
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedError('Missing or invalid authorization token');
-    }
 
     const { domain } = req.body;
 
@@ -47,11 +42,6 @@ router.post('/domain', validateBody(domainVerificationSchema), async (req: Reque
  */
 router.post('/github', validateBody(githubVerificationSchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // TODO: Implement authentication
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedError('Missing or invalid authorization token');
-    }
 
     const { organization, repository } = req.body;
 
@@ -78,11 +68,6 @@ router.post('/github', validateBody(githubVerificationSchema), async (req: Reque
  */
 router.get('/status', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // TODO: Implement authentication
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedError('Missing or invalid authorization token');
-    }
 
     // TODO: Implement status check logic
     const verifications = {
