@@ -65,7 +65,6 @@ export interface IServerMetadata {
 }
 
 export interface IPublisher {
-  _id?: string;
   username: string;
   email: string;
   verified_domains: string[];
@@ -76,7 +75,6 @@ export interface IPublisher {
 }
 
 export interface IMcpServer {
-  _id?: string;
   name: string;
   description: string;
   source: McpServerSource;

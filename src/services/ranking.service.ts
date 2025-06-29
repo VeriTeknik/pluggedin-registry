@@ -242,7 +242,7 @@ export class RankingService {
   /**
    * Get percentile rank for a server
    */
-  async getPercentileRank(server: IMcpServerDocument, totalServers: number): Promise<number> {
+  async getPercentileRank(server: IMcpServerDocument, _totalServers: number): Promise<number> {
     const score = this.calculateScore(server);
     
     // This is a simplified implementation

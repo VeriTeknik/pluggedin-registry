@@ -10,7 +10,11 @@ import {
   IServerMetadata,
 } from './types';
 
-export interface IMcpServerDocument extends IMcpServer, Document {}
+export interface IMcpServerDocument extends IMcpServer, Document {
+  getLatestVersion(): IServerVersion | undefined;
+  addVersion(version: IServerVersion): void;
+  calculateTrustScore(): number;
+}
 
 const PackageInfoSchema = new Schema<IPackageInfo>({
   registry_name: {
@@ -211,12 +215,12 @@ McpServerSchema.pre('save', function(next) {
 
 // Methods
 McpServerSchema.methods.getLatestVersion = function(): IServerVersion | undefined {
-  return this.versions.find(v => v.is_latest);
+  return this.versions.find((v: IServerVersion) => v.is_latest);
 };
 
 McpServerSchema.methods.addVersion = function(version: IServerVersion): void {
   // Mark all existing versions as not latest
-  this.versions.forEach(v => {
+  this.versions.forEach((v: IServerVersion) => {
     v.is_latest = false;
   });
   // Add new version as latest

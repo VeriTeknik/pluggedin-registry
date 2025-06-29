@@ -25,12 +25,18 @@ interface SearchResult {
 }
 
 export class SearchService {
-  private esClient: Client;
+  private esClient: Client | null = null;
   private indexName: string;
 
   constructor() {
-    this.esClient = getElasticsearchClient();
     this.indexName = `${process.env.ELASTICSEARCH_INDEX_PREFIX || 'mcp_'}servers`;
+  }
+
+  private getClient(): Client {
+    if (!this.esClient) {
+      this.esClient = getElasticsearchClient();
+    }
+    return this.esClient;
   }
 
   /**
@@ -72,7 +78,7 @@ export class SearchService {
 
       // Execute search
       const startTime = Date.now();
-      const response = await this.esClient.search({
+      const response = await this.getClient().search({
         index: this.indexName,
         body: {
           query: esQuery,
@@ -107,9 +113,9 @@ export class SearchService {
       const servers = await McpServer.find({ _id: { $in: serverIds } });
 
       // Preserve Elasticsearch order
-      const serverMap = new Map(servers.map(s => [s._id.toString(), s]));
+      const serverMap = new Map(servers.map(s => [s._id?.toString() || '', s]));
       const orderedServers = serverIds
-        .map(id => serverMap.get(id))
+        .map(id => serverMap.get(id || ''))
         .filter(Boolean) as IMcpServerDocument[];
 
       const result: SearchResult = {
@@ -156,9 +162,9 @@ export class SearchService {
         created_at: server.created_at,
       };
 
-      await this.esClient.index({
+      await this.getClient().index({
         index: this.indexName,
-        id: server._id.toString(),
+        id: server._id?.toString() || '',
         body: doc,
         refresh: 'wait_for',
       });
@@ -175,7 +181,7 @@ export class SearchService {
    */
   async removeServer(serverId: string): Promise<void> {
     try {
-      await this.esClient.delete({
+      await this.getClient().delete({
         index: this.indexName,
         id: serverId,
         refresh: 'wait_for',
@@ -193,7 +199,7 @@ export class SearchService {
    */
   async getSuggestions(query: string): Promise<string[]> {
     try {
-      const response = await this.esClient.search({
+      const response = await this.getClient().search({
         index: this.indexName,
         body: {
           suggest: {
@@ -210,7 +216,7 @@ export class SearchService {
       });
 
       const suggestions = response.suggest?.name_suggest?.[0]?.options || [];
-      return suggestions.map((opt: any) => opt.text);
+      return (suggestions as any[]).map((opt: any) => opt.text);
     } catch (error) {
       logger.error('Failed to get suggestions:', error);
       return [];
@@ -304,8 +310,8 @@ export class SearchService {
     
     try {
       // Delete and recreate index
-      await this.esClient.indices.delete({ index: this.indexName }).catch(() => {});
-      await this.esClient.indices.create({
+      await this.getClient().indices.delete({ index: this.indexName }).catch(() => {});
+      await this.getClient().indices.create({
         index: this.indexName,
         body: {
           mappings: {
@@ -331,7 +337,9 @@ export class SearchService {
       // Index all servers
       const servers = await McpServer.find({});
       for (const server of servers) {
-        await this.indexServer(server);
+        if (server._id) {
+          await this.indexServer(server);
+        }
       }
 
       logger.info(`Reindexed ${servers.length} servers`);

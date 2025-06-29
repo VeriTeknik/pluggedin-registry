@@ -47,7 +47,7 @@ router.post('/publish', strictRateLimiter, async (req: Request, res: Response, n
  * GET /api/v1/registry/servers/:id
  * Get a specific server by ID
  */
-router.get('/servers/:id', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/servers/:id', async (req: Request, _res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
 

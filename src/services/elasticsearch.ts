@@ -10,7 +10,7 @@ export async function connectElasticsearch(): Promise<void> {
     node: url,
     maxRetries: 5,
     requestTimeout: 60000,
-    sniffOnStart: true,
+    sniffOnStart: false,
   });
   
   try {
