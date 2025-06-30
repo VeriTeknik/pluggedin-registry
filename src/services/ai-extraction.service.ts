@@ -9,16 +9,20 @@ export interface ExtractedConfig {
   description?: string;
   command?: string;
   args?: string[];
-  env?: Record<string, {
+  env?: Array<{
+    name: string;
     description: string;
     required: boolean;
     example: string;
+    default?: string;
+    help_url?: string;
   }>;
   installation?: {
     npm?: string;
     pip?: string;
     docker?: string;
     binary?: string;
+    source?: string;
   };
   capabilities?: {
     tools?: boolean;
@@ -26,17 +30,48 @@ export interface ExtractedConfig {
     prompts?: boolean;
     logging?: boolean;
   };
-  transport?: 'stdio' | 'sse' | 'streamable-http';
+  transport?: {
+    type: 'stdio' | 'http' | 'sse';
+    config?: any;
+  };
   url?: string;
+  repository?: {
+    url: string;
+    source: string;
+    id: string;
+  };
+  packages?: Array<{
+    registry_name: string;
+    name: string;
+    version: string;
+    package_arguments: string[];
+    environment_variables: any[];
+  }>;
+  requirements?: {
+    runtime: string;
+    version?: string;
+    dependencies?: string[];
+  };
+  version_detail?: {
+    version: string;
+    release_date: string;
+    is_latest: boolean;
+  };
 }
 
 export interface ExtractionResult {
-  extracted_config: ExtractedConfig;
+  server_detail?: ExtractedConfig;
+  extracted_config?: ExtractedConfig; // For backward compatibility
   confidence_scores: {
     overall: number;
     completeness: number;
   };
-  source_files: string[];
+  source_files?: string[];
+  extraction_metadata?: {
+    extracted_at: string;
+    model: string;
+    sources: string[];
+  };
 }
 
 class AIExtractionService {
@@ -57,6 +92,8 @@ class AIExtractionService {
     options?: {
       useCache?: boolean;
       cacheKey?: string;
+      repoUrl?: string;
+      codeFiles?: Array<{ filename: string; content: string }>;
     }
   ): Promise<ExtractionResult> {
     const { useCache = true, cacheKey } = options || {};
@@ -84,6 +121,22 @@ class AIExtractionService {
         args.push('--package-json', packagePath);
       }
 
+      if (options?.repoUrl) {
+        args.push('--repo-url', options.repoUrl);
+      }
+
+      if (options?.codeFiles && options.codeFiles.length > 0) {
+        const codeDir = path.join(tmpDir, 'code');
+        await fs.mkdir(codeDir, { recursive: true });
+        
+        for (const file of options.codeFiles) {
+          const filePath = path.join(codeDir, file.filename);
+          await fs.writeFile(filePath, file.content, 'utf-8');
+        }
+        
+        args.push('--code-dir', codeDir);
+      }
+
       // Run Python extraction script
       const result = await this.runPythonScript(args);
 
@@ -108,13 +161,16 @@ class AIExtractionService {
   async extractFromRepository(
     readmeContent: string,
     packageJson?: any,
-    repoUrl?: string
+    repoUrl?: string,
+    codeFiles?: Array<{ filename: string; content: string }>
   ): Promise<ExtractionResult> {
     const cacheKey = repoUrl ? `repo:${repoUrl}` : undefined;
     
     return this.extractConfiguration(readmeContent, packageJson, {
       useCache: true,
       cacheKey,
+      repoUrl,
+      codeFiles
     });
   }
 
@@ -229,7 +285,12 @@ class AIExtractionService {
   } {
     const errors: string[] = [];
     const warnings: string[] = [];
-    const config = result.extracted_config;
+    const config = result.server_detail || result.extracted_config;
+
+    if (!config) {
+      errors.push('No configuration extracted');
+      return { isValid: false, errors, warnings };
+    }
 
     // Required fields
     if (!config.name) {
@@ -251,9 +312,19 @@ class AIExtractionService {
 
     // Validate environment variables
     if (config.env) {
-      for (const [key, value] of Object.entries(config.env)) {
-        if (!value.description) {
-          warnings.push(`Environment variable ${key} missing description`);
+      if (Array.isArray(config.env)) {
+        // New array format
+        for (const env of config.env) {
+          if (!env.description) {
+            warnings.push(`Environment variable ${env.name} missing description`);
+          }
+        }
+      } else {
+        // Legacy object format
+        for (const [key, value] of Object.entries(config.env)) {
+          if (!value.description) {
+            warnings.push(`Environment variable ${key} missing description`);
+          }
         }
       }
     }
@@ -294,10 +365,37 @@ class AIExtractionService {
       merged.args = [...new Set([...(existing.args || []), ...extracted.args])];
     }
     if (extracted.env) {
-      merged.env = { ...(existing.env || {}), ...extracted.env };
+      if (Array.isArray(extracted.env)) {
+        // New array format - merge by name
+        const existingEnvMap = new Map();
+        if (Array.isArray(existing.env)) {
+          existing.env.forEach((env: any) => existingEnvMap.set(env.name, env));
+        }
+        extracted.env.forEach(env => {
+          if (!existingEnvMap.has(env.name)) {
+            existingEnvMap.set(env.name, env);
+          }
+        });
+        merged.env = Array.from(existingEnvMap.values());
+      } else {
+        // Legacy object format
+        merged.env = { ...(existing.env || {}), ...extracted.env };
+      }
     }
     if (extracted.capabilities) {
       merged.capabilities = { ...(existing.capabilities || {}), ...extracted.capabilities };
+    }
+    if (extracted.transport) {
+      merged.transport = extracted.transport;
+    }
+    if (extracted.installation) {
+      merged.installation = { ...(existing.installation || {}), ...extracted.installation };
+    }
+    if (extracted.requirements) {
+      merged.requirements = { ...(existing.requirements || {}), ...extracted.requirements };
+    }
+    if (extracted.packages && extracted.packages.length > 0) {
+      merged.packages = extracted.packages;
     }
 
     return merged;

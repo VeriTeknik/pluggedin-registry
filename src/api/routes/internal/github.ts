@@ -60,7 +60,7 @@ router.post('/import', async (req, res) => {
     if (!mcpConfig) {
       logger.info('No MCP config found, using AI extraction', { owner, repo });
       
-      // Get README and package.json for AI analysis
+      // Get README, package.json, and code files for AI analysis
       const readme = await githubService.getReadme(
         { owner, repo },
         installation_id ? parseInt(installation_id) : undefined
@@ -71,15 +71,26 @@ router.post('/import', async (req, res) => {
         installation_id ? parseInt(installation_id) : undefined
       );
 
-      if (readme || packageJson) {
+      const codeFiles = await githubService.getCodeFiles(
+        { owner, repo },
+        installation_id ? parseInt(installation_id) : undefined
+      );
+
+      if (readme || packageJson || codeFiles.length > 0) {
         extractionResult = await aiExtractionService.extractFromRepository(
           readme || '',
           packageJson || {},
-          repository_url
+          repository_url,
+          codeFiles
         );
 
-        if (extractionResult && extractionResult.extracted_config) {
-          mcpConfig = extractionResult.extracted_config;
+        // Handle new enhanced format
+        if (extractionResult) {
+          if (extractionResult.server_detail) {
+            mcpConfig = extractionResult.server_detail;
+          } else if (extractionResult.extracted_config) {
+            mcpConfig = extractionResult.extracted_config;
+          }
           
           // Validate extraction
           const validation = aiExtractionService.validateExtraction(extractionResult);
@@ -96,28 +107,32 @@ router.post('/import', async (req, res) => {
     const server = {
       name: mcpConfig?.name || repoData.name,
       description: mcpConfig?.description || repoData.description || '',
-      repository: {
+      repository: mcpConfig?.repository || {
         url: repository_url,
         source: 'github',
         id: `${owner}/${repo}`,
       },
       command: mcpConfig?.command,
       args: mcpConfig?.args || [],
-      env: mcpConfig?.env || {},
+      env: mcpConfig?.env || [],
       url: mcpConfig?.url,
-      transport: mcpConfig?.transport || 'stdio',
+      transport: typeof mcpConfig?.transport === 'object' ? mcpConfig.transport : (mcpConfig?.transport || 'stdio'),
       capabilities: mcpConfig?.capabilities || {
         tools: false,
         resources: false,
         prompts: false,
         logging: false,
       },
+      installation: mcpConfig?.installation,
+      requirements: mcpConfig?.requirements,
+      packages: mcpConfig?.packages,
       metadata: {
         stars: repoData.stars,
         language: repoData.language,
         topics: repoData.topics,
         license: repoData.license,
         homepage: repoData.homepage,
+        version: mcpConfig?.version_detail?.version,
       },
     };
 

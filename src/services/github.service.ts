@@ -248,6 +248,50 @@ class GitHubService {
   }
 
   /**
+   * Get main code files for analysis
+   */
+  async getCodeFiles(repo: GitHubRepository, installationId?: number): Promise<Array<{ filename: string; content: string }>> {
+    const codeFiles: Array<{ filename: string; content: string }> = [];
+    const targetFiles = [
+      'index.js',
+      'index.ts', 
+      'main.js',
+      'main.ts',
+      'server.js',
+      'server.ts',
+      'src/index.js',
+      'src/index.ts',
+      'src/main.js',
+      'src/main.ts',
+      'main.py',
+      'server.py',
+      '__main__.py',
+      'src/main.py'
+    ];
+
+    for (const filename of targetFiles) {
+      try {
+        const file = await this.getFile(repo, filename, installationId);
+        if (file && file.content) {
+          codeFiles.push({
+            filename,
+            content: file.content.substring(0, 2000) // Limit to 2000 chars
+          });
+          
+          // Limit to 5 files max
+          if (codeFiles.length >= 5) {
+            break;
+          }
+        }
+      } catch (error) {
+        // Ignore file not found errors
+      }
+    }
+
+    return codeFiles;
+  }
+
+  /**
    * Get package.json content
    */
   async getPackageJson(repo: GitHubRepository, installationId?: number): Promise<any | null> {
