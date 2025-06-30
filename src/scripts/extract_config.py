@@ -183,6 +183,19 @@ class MCPConfigExtractor:
                 add_references=True,
                 add_justifications=True
             ),
+            JsonObjectConcept(
+                name="Setup Instructions",
+                description="Installation and setup steps with associated URLs for getting API keys or credentials",
+                structure=[{
+                    "step": str,
+                    "description": str,
+                    "url": str,
+                    "link_text": str
+                }],
+                add_references=True,
+                reference_depth="sentences",
+                add_justifications=True
+            ),
             StringConcept(
                 name="Transport Type",
                 description="The transport protocol: stdio, http (streamable), or sse",
@@ -254,6 +267,8 @@ class MCPConfigExtractor:
             "packages": []
         }
         
+        setup_instructions = []
+        
         for concept in doc.concepts:
             if not hasattr(concept, 'value') or not concept.value:
                 continue
@@ -272,10 +287,16 @@ class MCPConfigExtractor:
                         server["args"] = cmd_parts[1:]
             elif concept.name == "Environment Variables":
                 server["env"] = self._parse_env_variables(concept.value)
+            elif concept.name == "Setup Instructions":
+                setup_instructions = concept.value if isinstance(concept.value, list) else []
             elif concept.name == "Transport Type":
                 server["transport"] = {"type": self._detect_transport(concept.value)}
             elif concept.name == "Runtime Requirements":
                 server["requirements"]["runtime"] = self._detect_runtime(concept.value)
+        
+        # Enhance environment variables with setup instruction URLs
+        if "env" in server and setup_instructions:
+            server["env"] = self._match_env_with_setup_urls(server["env"], setup_instructions)
         
         # Add repository info
         if repo_url:
@@ -286,6 +307,30 @@ class MCPConfigExtractor:
             server = self._enhance_from_package_json(server, package_json)
         
         return server
+    
+    def _match_env_with_setup_urls(
+        self, 
+        env_vars: List[Dict], 
+        setup_instructions: List[Dict]
+    ) -> List[Dict]:
+        """Match environment variables with setup instruction URLs"""
+        for env_var in env_vars:
+            var_name = env_var["name"]
+            
+            # Look for setup instructions that might relate to this env var
+            for instruction in setup_instructions:
+                step_text = instruction.get("step", "") + " " + instruction.get("description", "")
+                
+                # Check if the instruction mentions the env var or related keywords
+                if (var_name in step_text or 
+                    any(keyword in step_text.lower() for keyword in 
+                        ['api key', 'token', 'credential', 'generate', 'create'])):
+                    
+                    if instruction.get("url") and not env_var.get("help_url"):
+                        env_var["help_url"] = instruction["url"]
+                        break
+        
+        return env_vars
     
     def _enhance_configuration(
         self, 
@@ -305,6 +350,10 @@ class MCPConfigExtractor:
         if "transport" not in server or not server["transport"]:
             server["transport"] = {"type": self._detect_transport_from_code(code_files)}
         
+        # Extract help URLs for environment variables
+        if "env" in server and server["env"]:
+            server["env"] = self._enhance_env_with_help_urls(server["env"], readme)
+        
         # Check npm registry
         if package_json and "name" in package_json:
             npm_info = self._check_npm_registry(package_json["name"])
@@ -323,6 +372,176 @@ class MCPConfigExtractor:
         config["confidence_scores"]["completeness"] = found / len(required_fields)
         
         return config
+    
+    def _enhance_env_with_help_urls(self, env_vars: List[Dict], readme: str) -> List[Dict]:
+        """Extract help URLs from README for environment variables"""
+        enhanced_vars = []
+        
+        for env_var in env_vars:
+            var_name = env_var["name"]
+            help_url = self._extract_help_url_for_env(var_name, readme)
+            
+            if help_url and not env_var.get("help_url"):
+                env_var["help_url"] = help_url
+            enhanced_vars.append(env_var)
+        
+        return enhanced_vars
+    
+    def _extract_help_url_for_env(self, env_var_name: str, readme: str) -> str:
+        """Extract help URL for a specific environment variable from README"""
+        # Common patterns for API key setup instructions
+        setup_patterns = [
+            rf"(?i)(?:get|generate|create|obtain|find)\s+(?:your\s+)?{re.escape(env_var_name)}",
+            rf"(?i){re.escape(env_var_name)}\s*(?:from|at|on|in)\s+",
+            rf"(?i)(?:api\s+key|token|credential).*{re.escape(env_var_name)}",
+            rf"(?i){re.escape(env_var_name)}.*(?:console|dashboard|settings|portal)"
+        ]
+        
+        # Also check for service-specific patterns
+        service_keywords = self._extract_service_keywords(env_var_name)
+        if service_keywords:
+            setup_patterns.extend([
+                rf"(?i)(?:visit|go to|open)\s+{service_keywords}",
+                rf"(?i){service_keywords}\s+(?:console|dashboard|portal)",
+                rf"(?i)generate.*{service_keywords}",
+            ])
+        
+        best_url = ""
+        best_score = 0
+        
+        for pattern in setup_patterns:
+            matches = list(re.finditer(pattern, readme))
+            
+            for match in matches:
+                # Get context around the match
+                start = max(0, match.start() - 300)
+                end = min(len(readme), match.end() + 300)
+                context = readme[start:end]
+                
+                # Extract URLs from the context
+                urls = self._extract_urls_from_text(context)
+                
+                for url, link_text in urls:
+                    score = self._score_url_relevance(url, link_text, env_var_name, context)
+                    if score > best_score:
+                        best_score = score
+                        best_url = url
+        
+        # If no URL found with patterns, do a broader search
+        if not best_url:
+            # Find any mention of the env var
+            if env_var_name in readme:
+                index = readme.find(env_var_name)
+                context = readme[max(0, index-500):min(len(readme), index+500)]
+                urls = self._extract_urls_from_text(context)
+                if urls:
+                    best_url = urls[0][0]
+        
+        return best_url
+    
+    def _extract_service_keywords(self, env_var_name: str) -> str:
+        """Extract service name from environment variable name"""
+        # Remove common suffixes
+        name = env_var_name.lower()
+        for suffix in ['_api_key', '_key', '_token', '_secret', '_id', '_credentials']:
+            if name.endswith(suffix):
+                name = name[:-len(suffix)]
+                break
+        
+        # Convert to readable format
+        name = name.replace('_', ' ').strip()
+        
+        # Handle special cases
+        service_map = {
+            'openai': 'openai|gpt',
+            'anthropic': 'anthropic|claude',
+            'github': 'github',
+            'google': 'google|gcp',
+            'aws': 'aws|amazon',
+            'azure': 'azure|microsoft',
+            'huggingface': 'hugging face|huggingface',
+            'replicate': 'replicate',
+            'cohere': 'cohere',
+            'pinecone': 'pinecone',
+            'weaviate': 'weaviate',
+            'qdrant': 'qdrant',
+            'supabase': 'supabase',
+            'firebase': 'firebase',
+            'vercel': 'vercel',
+            'railway': 'railway',
+            'magic': 'magic|21st\.dev'
+        }
+        
+        for key, pattern in service_map.items():
+            if key in name:
+                return pattern
+        
+        return name
+    
+    def _score_url_relevance(self, url: str, link_text: str, env_var_name: str, context: str) -> int:
+        """Score how relevant a URL is for getting the API key"""
+        score = 0
+        
+        # Check URL content
+        url_lower = url.lower()
+        link_lower = link_text.lower()
+        
+        # High priority keywords
+        high_priority = ['console', 'dashboard', 'settings', 'api', 'keys', 'token', 
+                        'credential', 'generate', 'create', 'portal', 'account']
+        
+        for keyword in high_priority:
+            if keyword in url_lower:
+                score += 3
+            if keyword in link_lower:
+                score += 2
+        
+        # Check if URL contains service name
+        service_keywords = self._extract_service_keywords(env_var_name)
+        if service_keywords and any(kw in url_lower for kw in service_keywords.split('|')):
+            score += 5
+        
+        # Bonus for specific patterns
+        if re.search(r'(?:api[-_]?keys?|tokens?|credentials?)', url_lower):
+            score += 4
+        
+        # Check link text quality
+        if re.search(r'(?:generate|create|get|obtain)\s+(?:api\s+)?key', link_lower):
+            score += 5
+        
+        # Penalty for generic URLs
+        if any(generic in url_lower for generic in ['github.com', 'docs.', 'wikipedia']):
+            score -= 2
+        
+        return max(0, score)
+    
+    def _extract_urls_from_text(self, text: str) -> List[Tuple[str, str]]:
+        """Extract URLs from markdown and plain text"""
+        urls = []
+        
+        # Markdown link pattern: [text](url)
+        markdown_pattern = r'\[([^\]]+)\]\(([^)]+)\)'
+        for match in re.finditer(markdown_pattern, text):
+            link_text = match.group(1)
+            url = match.group(2)
+            urls.append((url, link_text))
+        
+        # HTML link pattern: <a href="url">text</a>
+        html_pattern = r'<a\s+(?:[^>]*?\s+)?href=["\'](.*?)["\'].*?>(.*?)</a>'
+        for match in re.finditer(html_pattern, text, re.IGNORECASE | re.DOTALL):
+            url = match.group(1)
+            link_text = re.sub(r'<[^>]+>', '', match.group(2))  # Strip HTML tags
+            urls.append((url, link_text))
+        
+        # Plain URL pattern
+        url_pattern = r'https?://[^\s<>"{}|\\^`\[\]]+'
+        for match in re.finditer(url_pattern, text):
+            url = match.group(0)
+            # Only add if not already captured by markdown/html patterns
+            if not any(u[0] == url for u in urls):
+                urls.append((url, ""))
+        
+        return urls
     
     def _parse_installation_commands(self, text: str) -> Dict[str, str]:
         """Parse various installation commands"""
@@ -363,7 +582,7 @@ class MCPConfigExtractor:
                 "description": description.strip(),
                 "required": True,
                 "example": "",
-                "help_url": self._get_help_url(var_name)
+                "help_url": ""  # Will be populated by extraction
             })
         
         # Also catch standalone ENV_VARS
@@ -376,21 +595,11 @@ class MCPConfigExtractor:
                     "name": var,
                     "description": f"Environment variable {var}",
                     "required": True,
-                    "example": ""
+                    "example": "",
+                    "help_url": ""
                 })
         
         return env_vars
-    
-    def _get_help_url(self, var_name: str) -> str:
-        """Get help URL for common environment variables"""
-        help_urls = {
-            "OPENAI_API_KEY": "https://platform.openai.com/api-keys",
-            "ANTHROPIC_API_KEY": "https://console.anthropic.com/settings/keys",
-            "GITHUB_TOKEN": "https://github.com/settings/tokens",
-            "GOOGLE_API_KEY": "https://console.cloud.google.com/apis/credentials",
-            "AWS_ACCESS_KEY_ID": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html"
-        }
-        return help_urls.get(var_name, "")
     
     def _detect_transport(self, text: str) -> str:
         """Detect transport type from text"""
