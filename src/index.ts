@@ -67,16 +67,22 @@ async function startServer() {
     await connectRedis();
     logger.info('Redis connected');
 
-    // Initialize GitHub service if credentials are provided
-    if (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY) {
+    // Initialize GitHub service
+    try {
+      const privateKey = process.env.GITHUB_APP_PRIVATE_KEY
+        ? Buffer.from(process.env.GITHUB_APP_PRIVATE_KEY, 'base64').toString()
+        : '';
+
       initializeGitHubService({
-        appId: process.env.GITHUB_APP_ID,
-        privateKey: process.env.GITHUB_APP_PRIVATE_KEY,
+        appId: process.env.GITHUB_APP_ID || '',
+        privateKey,
         clientId: process.env.GITHUB_CLIENT_ID || '',
         clientSecret: process.env.GITHUB_CLIENT_SECRET || '',
         webhookSecret: process.env.GITHUB_WEBHOOK_SECRET,
       });
       logger.info('GitHub service initialized');
+    } catch (error) {
+      logger.warn('GitHub service initialization failed, continuing without it', { error });
     }
 
     // Start HTTP server
@@ -99,6 +105,7 @@ process.on('SIGTERM', async () => {
   // Close database connections
   process.exit(0);
 });
+
 
 // Start the server
 startServer();

@@ -168,3 +168,14 @@ export const publisherLoginSchema = Joi.object({
   email: Joi.string().email().required(),
   password: Joi.string().required(),
 });
+
+// Import schemas
+export const importRepositorySchema = Joi.object({
+  repository_url: Joi.string()
+    .uri({ scheme: ['https'] })
+    .pattern(/^https:\/\/github\.com\/[\w-]+\/[\w.-]+\/?$/)
+    .required()
+    .messages({
+      'string.pattern.base': 'Must be a valid GitHub repository URL'
+    })
+});

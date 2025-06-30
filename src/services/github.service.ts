@@ -1,7 +1,8 @@
-import { App } from '@octokit/app';
+// import { App } from '@octokit/app';
 import { Webhooks } from '@octokit/webhooks';
 import jwt from 'jsonwebtoken';
 import { logger } from '../utils/logger';
+import { Octokit } from '@octokit/rest';
 
 export interface GitHubConfig {
   appId: string;
@@ -40,18 +41,16 @@ export interface McpConfigFile {
 }
 
 class GitHubService {
-  private app: App;
+  private octokit: Octokit;
   private webhooks?: Webhooks;
+  private config: GitHubConfig;
 
   constructor(config: GitHubConfig) {
-    this.app = new App({
-      appId: config.appId,
-      privateKey: config.privateKey,
-      oauth: {
-        clientId: config.clientId,
-        clientSecret: config.clientSecret,
-      },
-    });
+    this.config = config;
+    
+    // Use Octokit directly for public API access
+    // Don't use client ID/secret auth as it has limited access
+    this.octokit = new Octokit();
 
     if (config.webhookSecret) {
       this.webhooks = new Webhooks({
@@ -61,10 +60,44 @@ class GitHubService {
   }
 
   /**
-   * Get an authenticated Octokit instance for a specific installation
+   * Get an authenticated Octokit instance
+   * Uses installation token if available, otherwise falls back to app auth
    */
-  private async getOctokit(installationId: number) {
-    return await this.app.getInstallationOctokit(installationId);
+  private async getOctokit(installationId?: number) {
+    if (!installationId) {
+      // For public repositories, use unauthenticated access
+      // This avoids "Bad credentials" errors and works fine for public repos
+      return new Octokit();
+    }
+    
+    if (!this.config.appId || !this.config.privateKey) {
+      // No app credentials, fall back to unauthenticated
+      return new Octokit();
+    }
+
+    try {
+      // Generate JWT for app authentication
+      const jwt = this.generateAppJWT(this.config.privateKey, this.config.appId);
+      
+      // Create app-authenticated Octokit
+      const appOctokit = new Octokit({
+        auth: jwt,
+      });
+
+      // Get installation access token
+      const { data } = await appOctokit.request('POST /app/installations/{installation_id}/access_tokens', {
+        installation_id: installationId,
+      });
+
+      // Return Octokit authenticated with installation token
+      return new Octokit({
+        auth: data.token,
+      });
+    } catch (error) {
+      logger.error('Failed to get installation token', { installationId, error });
+      // Fall back to basic octokit
+      return this.octokit;
+    }
   }
 
   /**
@@ -72,7 +105,7 @@ class GitHubService {
    */
   async getInstallationId(repo: GitHubRepository): Promise<number | null> {
     try {
-      const { data } = await this.app.octokit.request('GET /repos/{owner}/{repo}/installation', {
+      const { data } = await this.octokit.request('GET /repos/{owner}/{repo}/installation', {
         owner: repo.owner,
         repo: repo.repo,
       });
@@ -86,13 +119,8 @@ class GitHubService {
   /**
    * Fetch a file from a GitHub repository
    */
-  async getFile(repo: GitHubRepository, path: string): Promise<GitHubFile | null> {
+  async getFile(repo: GitHubRepository, path: string, installationId?: number): Promise<GitHubFile | null> {
     try {
-      const installationId = await this.getInstallationId(repo);
-      if (!installationId) {
-        throw new Error('No installation found for repository');
-      }
-
       const octokit = await this.getOctokit(installationId);
       const { data } = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
         owner: repo.owner,
@@ -122,13 +150,8 @@ class GitHubService {
   /**
    * List files in a directory
    */
-  async listFiles(repo: GitHubRepository, path: string = ''): Promise<string[]> {
+  async listFiles(repo: GitHubRepository, path: string = '', installationId?: number): Promise<string[]> {
     try {
-      const installationId = await this.getInstallationId(repo);
-      if (!installationId) {
-        throw new Error('No installation found for repository');
-      }
-
       const octokit = await this.getOctokit(installationId);
       const { data } = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
         owner: repo.owner,
@@ -152,9 +175,9 @@ class GitHubService {
   /**
    * Scan a repository for MCP configuration files
    */
-  async scanForMcpConfig(repo: GitHubRepository): Promise<McpConfigFile | null> {
+  async scanForMcpConfig(repo: GitHubRepository, installationId?: number): Promise<McpConfigFile | null> {
     // Check for .mcp.json file
-    const mcpJson = await this.getFile(repo, '.mcp.json');
+    const mcpJson = await this.getFile(repo, '.mcp.json', installationId);
     if (mcpJson) {
       try {
         return JSON.parse(mcpJson.content);
@@ -164,7 +187,7 @@ class GitHubService {
     }
 
     // Check for .well-known/mcp.json
-    const wellKnownMcp = await this.getFile(repo, '.well-known/mcp.json');
+    const wellKnownMcp = await this.getFile(repo, '.well-known/mcp.json', installationId);
     if (wellKnownMcp) {
       try {
         return JSON.parse(wellKnownMcp.content);
@@ -180,13 +203,8 @@ class GitHubService {
   /**
    * Get repository metadata
    */
-  async getRepositoryMetadata(repo: GitHubRepository) {
+  async getRepositoryMetadata(repo: GitHubRepository, installationId?: number) {
     try {
-      const installationId = await this.getInstallationId(repo);
-      if (!installationId) {
-        throw new Error('No installation found for repository');
-      }
-
       const octokit = await this.getOctokit(installationId);
       const { data } = await octokit.request('GET /repos/{owner}/{repo}', {
         owner: repo.owner,
@@ -205,6 +223,7 @@ class GitHubService {
         createdAt: data.created_at,
         updatedAt: data.updated_at,
         license: data.license?.spdx_id,
+        private: data.private,
       };
     } catch (error) {
       logger.error('Failed to get repository metadata', { repo, error });
@@ -215,11 +234,11 @@ class GitHubService {
   /**
    * Get README content
    */
-  async getReadme(repo: GitHubRepository): Promise<string | null> {
+  async getReadme(repo: GitHubRepository, installationId?: number): Promise<string | null> {
     const readmeFiles = ['README.md', 'readme.md', 'README.MD', 'README', 'readme'];
     
     for (const filename of readmeFiles) {
-      const file = await this.getFile(repo, filename);
+      const file = await this.getFile(repo, filename, installationId);
       if (file) {
         return file.content;
       }
@@ -231,8 +250,8 @@ class GitHubService {
   /**
    * Get package.json content
    */
-  async getPackageJson(repo: GitHubRepository): Promise<any | null> {
-    const packageJson = await this.getFile(repo, 'package.json');
+  async getPackageJson(repo: GitHubRepository, installationId?: number): Promise<any | null> {
+    const packageJson = await this.getFile(repo, 'package.json', installationId);
     if (packageJson) {
       try {
         return JSON.parse(packageJson.content);
@@ -246,14 +265,14 @@ class GitHubService {
   /**
    * Create a JWT for app authentication
    */
-  generateAppJWT(): string {
+  generateAppJWT(privateKey: string, appId: string): string {
     const payload = {
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 600, // 10 minutes
-      iss: process.env.GITHUB_APP_ID,
+      iss: appId,
     };
 
-    return jwt.sign(payload, process.env.GITHUB_APP_PRIVATE_KEY!, {
+    return jwt.sign(payload, privateKey, {
       algorithm: 'RS256',
     });
   }

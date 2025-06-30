@@ -50,6 +50,18 @@ export interface UpdateServerInput {
   category?: string;
 }
 
+export interface ServerMetadataUpdate {
+  github_stars?: number;
+  download_count?: number;
+  last_scanned?: Date;
+  ai_extraction?: {
+    confidence_score: number;
+    extracted_at: Date;
+    source_files: string[];
+    raw_config?: any;
+  };
+}
+
 class RegistryService {
   /**
    * Publish a new MCP server to the registry
@@ -358,6 +370,65 @@ class RegistryService {
    */
   private generateExternalId(source: string, repoId: string): string {
     return `${source}:${repoId}`;
+  }
+
+  /**
+   * Find server by repository URL
+   */
+  async findServerByRepository(repositoryUrl: string): Promise<IMcpServerDocument | null> {
+    try {
+      const server = await McpServer.findOne({
+        'repository.url': repositoryUrl
+      });
+      return server;
+    } catch (error) {
+      logger.error('Error finding server by repository:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update server metadata (AI extraction, stars, etc)
+   */
+  async updateServerMetadata(
+    serverId: string,
+    metadata: ServerMetadataUpdate
+  ): Promise<IMcpServerDocument> {
+    try {
+      const updateData: any = {};
+      
+      if (metadata.github_stars !== undefined) {
+        updateData['metadata.github_stars'] = metadata.github_stars;
+      }
+      if (metadata.download_count !== undefined) {
+        updateData['metadata.download_count'] = metadata.download_count;
+      }
+      if (metadata.last_scanned !== undefined) {
+        updateData['metadata.last_scanned'] = metadata.last_scanned;
+      }
+      if (metadata.ai_extraction !== undefined) {
+        updateData['metadata.ai_extraction'] = metadata.ai_extraction;
+      }
+
+      const server = await McpServer.findByIdAndUpdate(
+        serverId,
+        { $set: updateData },
+        { new: true }
+      );
+
+      if (!server) {
+        throw new NotFoundError('Server not found');
+      }
+
+      // Re-index in Elasticsearch
+      await searchService.indexServer(server);
+
+      logger.info('Server metadata updated', { serverId });
+      return server;
+    } catch (error) {
+      logger.error('Error updating server metadata:', error);
+      throw error;
+    }
   }
 }
 

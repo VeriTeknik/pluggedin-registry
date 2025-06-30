@@ -9,61 +9,40 @@ import sys
 import json
 import argparse
 from typing import Dict, Any, List, Optional
-from contextgem import Document, DocumentLLM, StringConcept, StructuredConcept
+from dataclasses import dataclass
+
+# Configure loguru before importing contextgem to suppress its output
+from loguru import logger
+logger.remove()  # Remove default handler
+logger.add(sys.stderr, level="ERROR")  # Only log errors to stderr
+
+from contextgem import Document, DocumentLLM, StringConcept, JsonObjectConcept
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Configuration extraction schema
-CONFIG_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "name": {"type": "string", "description": "Server name"},
-        "description": {"type": "string", "description": "Server description"},
-        "command": {"type": "string", "description": "Command to run the server"},
-        "args": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Command line arguments"
-        },
-        "env": {
-            "type": "object",
-            "description": "Environment variables required",
-            "additionalProperties": {
-                "type": "object",
-                "properties": {
-                    "description": {"type": "string"},
-                    "required": {"type": "boolean"},
-                    "example": {"type": "string"}
-                }
-            }
-        },
-        "installation": {
-            "type": "object",
-            "properties": {
-                "npm": {"type": "string", "description": "NPM package name"},
-                "pip": {"type": "string", "description": "Python package name"},
-                "docker": {"type": "string", "description": "Docker image name"},
-                "binary": {"type": "string", "description": "Binary download URL"}
-            }
-        },
-        "capabilities": {
-            "type": "object",
-            "properties": {
-                "tools": {"type": "boolean"},
-                "resources": {"type": "boolean"},
-                "prompts": {"type": "boolean"},
-                "logging": {"type": "boolean"}
-            }
-        },
-        "transport": {
-            "type": "string",
-            "enum": ["stdio", "sse", "streamable-http"],
-            "description": "Transport protocol"
-        },
-        "url": {"type": "string", "description": "URL for HTTP-based servers"}
-    }
+# Simple dictionary-based structure for contextgem
+MCP_CONFIG_STRUCTURE = {
+    "name": str,
+    "description": str, 
+    "command": str,
+    "args": list[str],
+    "env": dict[str, str],
+    "installation": {
+        "npm": str,
+        "pip": str,
+        "docker": str,
+        "binary": str
+    },
+    "capabilities": {
+        "tools": bool,
+        "resources": bool,
+        "prompts": bool,
+        "logging": bool
+    },
+    "transport": str,
+    "url": str
 }
 
 
@@ -129,10 +108,10 @@ def extract_configuration(readme_content: str, package_json: Optional[Dict[str, 
             description="MCP capabilities: tools, resources, prompts, logging",
             add_references=True
         ),
-        StructuredConcept(
+        JsonObjectConcept(
             name="Configuration",
             description="Complete MCP server configuration",
-            schema=CONFIG_SCHEMA,
+            structure=MCP_CONFIG_STRUCTURE,
             add_references=True,
             add_justifications=True
         )
@@ -163,8 +142,8 @@ def extract_configuration(readme_content: str, package_json: Optional[Dict[str, 
     
     # Process structured configuration if extracted
     for concept in doc.concepts:
-        if concept.name == "Configuration" and concept.values:
-            config["extracted_config"] = concept.values[0].get("value", {})
+        if concept.name == "Configuration" and hasattr(concept, 'value') and concept.value:
+            config["extracted_config"] = concept.value
             config["confidence_scores"]["overall"] = 0.8  # Base confidence
             break
     
@@ -173,24 +152,24 @@ def extract_configuration(readme_content: str, package_json: Optional[Dict[str, 
         extracted = {}
         
         for concept in doc.concepts:
-            if concept.name == "Server Name" and concept.values:
-                extracted["name"] = concept.values[0].get("value", "")
-            elif concept.name == "Description" and concept.values:
-                extracted["description"] = concept.values[0].get("value", "")
-            elif concept.name == "Execution Command" and concept.values:
-                command_str = concept.values[0].get("value", "")
+            if concept.name == "Server Name" and hasattr(concept, 'value') and concept.value:
+                extracted["name"] = concept.value
+            elif concept.name == "Description" and hasattr(concept, 'value') and concept.value:
+                extracted["description"] = concept.value
+            elif concept.name == "Execution Command" and hasattr(concept, 'value') and concept.value:
+                command_str = concept.value
                 # Parse command string
                 parts = command_str.split()
                 if parts:
                     extracted["command"] = parts[0]
                     if len(parts) > 1:
                         extracted["args"] = parts[1:]
-            elif concept.name == "Environment Variables" and concept.values:
+            elif concept.name == "Environment Variables" and hasattr(concept, 'value') and concept.value:
                 # Parse environment variables
-                env_text = concept.values[0].get("value", "")
+                env_text = concept.value
                 extracted["env"] = parse_env_variables(env_text)
-            elif concept.name == "Capabilities" and concept.values:
-                cap_text = concept.values[0].get("value", "").lower()
+            elif concept.name == "Capabilities" and hasattr(concept, 'value') and concept.value:
+                cap_text = concept.value.lower()
                 extracted["capabilities"] = {
                     "tools": "tool" in cap_text,
                     "resources": "resource" in cap_text,

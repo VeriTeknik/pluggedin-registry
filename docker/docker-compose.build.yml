@@ -1,0 +1,10 @@
+# Docker Compose file for building with custom image names
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.build.yml build
+
+services:
+  registry-api:
+    image: pluggedin/registry:latest
+    build:
+      tags:
+        - "pluggedin/registry:latest"
+        - "pluggedin/registry:1.0.0"

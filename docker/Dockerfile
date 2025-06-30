@@ -1,6 +1,11 @@
 # Build stage
 FROM node:20-alpine AS builder
 
+# Add labels for proper identification
+LABEL maintainer="VeriTeknik"
+LABEL description="Plugged.in Registry - MCP Server Registry Service"
+LABEL version="1.0.0"
+
 WORKDIR /app
 
 # Copy package files
@@ -17,16 +22,35 @@ COPY src ./src
 RUN npm run build
 
 # Production stage
-FROM node:20-alpine AS production
+FROM node:20-slim AS production
+
+# Add labels for proper identification
+LABEL maintainer="VeriTeknik"
+LABEL description="Plugged.in Registry - MCP Server Registry Service"
+LABEL version="1.0.0"
+LABEL org.opencontainers.image.title="pluggedin-registry"
+LABEL org.opencontainers.image.description="MCP Server Registry for Plugged.in Platform"
+LABEL org.opencontainers.image.vendor="VeriTeknik"
+LABEL org.opencontainers.image.url="https://plugged.in"
+LABEL org.opencontainers.image.source="https://github.com/veriteknik/pluggedin-registry"
 
 WORKDIR /app
 
-# Install dumb-init for proper signal handling and Python for AI extraction
-RUN apk add --no-cache dumb-init python3 py3-pip
+# Install dumb-init for proper signal handling and Python for AI extraction  
+# Add build dependencies for torch and other scientific packages
+RUN apt-get update && apt-get install -y \
+    dumb-init \
+    python3 \
+    python3-pip \
+    python3-dev \
+    python3-venv \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
+RUN groupadd --gid 1001 nodejs && \
+    useradd --uid 1001 --gid nodejs --shell /bin/bash --create-home nodejs
 
 # Copy package files
 COPY package*.json ./
@@ -42,8 +66,14 @@ COPY --from=builder /app/dist ./dist
 COPY requirements.txt ./
 COPY src/scripts/extract_config.py ./dist/scripts/
 
-# Install Python dependencies
-RUN pip3 install --no-cache-dir -r requirements.txt
+# Install Python dependencies with virtual environment
+# Use a larger timeout for large packages like torch
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --upgrade pip && \
+    /opt/venv/bin/pip install --no-cache-dir --timeout 600 -r requirements.txt
+
+# Add virtual environment to PATH
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Create logs directory
 RUN mkdir -p logs && chown -R nodejs:nodejs logs

@@ -142,8 +142,35 @@ class AIExtractionService {
           reject(new Error(`Python script exited with code ${code}: ${stderr}`));
         } else {
           try {
-            const result = JSON.parse(stdout);
-            resolve(result);
+            // Extract JSON from output, handling contextgem logging
+            // Find the last occurrence of a JSON object in the output
+            const lines = stdout.split('\n');
+            let jsonStr = '';
+            let braceCount = 0;
+            let inJson = false;
+            
+            // Scan from the end to find complete JSON
+            for (let i = lines.length - 1; i >= 0; i--) {
+              const line = lines[i];
+              if (line.includes('}')) {
+                inJson = true;
+              }
+              if (inJson) {
+                jsonStr = line + '\n' + jsonStr;
+                braceCount += (line.match(/\{/g) || []).length;
+                braceCount -= (line.match(/\}/g) || []).length;
+                if (braceCount === 0 && jsonStr.trim().startsWith('{')) {
+                  break;
+                }
+              }
+            }
+            
+            if (jsonStr.trim()) {
+              const result = JSON.parse(jsonStr.trim());
+              resolve(result);
+            } else {
+              throw new Error('No JSON found in output');
+            }
           } catch (error) {
             logger.error('Failed to parse Python output', { stdout, error });
             reject(new Error('Failed to parse extraction result'));
@@ -182,7 +209,7 @@ class AIExtractionService {
   private async saveToCache(key: string, result: ExtractionResult): Promise<void> {
     try {
       const redis = getRedisClient();
-      await redis.setex(
+      await redis.setEx(
         `${this.cachePrefix}${key}`,
         this.cacheTTL,
         JSON.stringify(result)
