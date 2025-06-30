@@ -90,8 +90,8 @@ router.post(
       }
 
       // Merge with any existing .mcp.json config
-      let finalConfig = extractionResult.extracted_config;
-      if (mcpConfig) {
+      let finalConfig = extractionResult.server_detail || extractionResult.extracted_config;
+      if (mcpConfig && finalConfig) {
         finalConfig = aiExtractionService.mergeWithExisting(mcpConfig, finalConfig);
       }
 
@@ -102,7 +102,7 @@ router.post(
           description: metadata.description || 'MCP server from GitHub',
           command: 'node',
           args: ['index.js'],
-          env: {},
+          env: [],
           capabilities: {
             tools: false,
             resources: false,
@@ -152,12 +152,24 @@ router.post(
       let transformedEnv: Record<string, string> | undefined;
       if (finalConfig.env) {
         transformedEnv = {};
-        for (const [key, value] of Object.entries(finalConfig.env)) {
-          if (typeof value === 'string') {
-            transformedEnv[key] = value;
-          } else if (typeof value === 'object' && value !== null && 'example' in value) {
-            // Use example value if available
-            transformedEnv[key] = (value as any).example || '';
+        
+        // Handle both array and object formats
+        if (Array.isArray(finalConfig.env)) {
+          // New array format
+          for (const envVar of finalConfig.env) {
+            if (envVar.name) {
+              transformedEnv[envVar.name] = envVar.example || envVar.default || '';
+            }
+          }
+        } else {
+          // Legacy object format
+          for (const [key, value] of Object.entries(finalConfig.env)) {
+            if (typeof value === 'string') {
+              transformedEnv[key] = value;
+            } else if (typeof value === 'object' && value !== null && 'example' in value) {
+              // Use example value if available
+              transformedEnv[key] = (value as any).example || '';
+            }
           }
         }
       }
@@ -198,8 +210,8 @@ router.post(
         ai_extraction: {
           confidence_score: extractionResult.confidence_scores.overall,
           extracted_at: new Date(),
-          source_files: extractionResult.source_files,
-          raw_config: extractionResult.extracted_config
+          source_files: extractionResult.source_files || [],
+          raw_config: extractionResult.server_detail || extractionResult.extracted_config
         }
       });
 

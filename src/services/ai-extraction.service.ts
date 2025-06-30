@@ -322,7 +322,7 @@ class AIExtractionService {
       } else {
         // Legacy object format
         for (const [key, value] of Object.entries(config.env)) {
-          if (!value.description) {
+          if (typeof value === 'object' && value !== null && !('description' in value)) {
             warnings.push(`Environment variable ${key} missing description`);
           }
         }
@@ -377,9 +377,11 @@ class AIExtractionService {
           }
         });
         merged.env = Array.from(existingEnvMap.values());
-      } else {
+      } else if (typeof extracted.env === 'object') {
         // Legacy object format
-        merged.env = { ...(existing.env || {}), ...extracted.env };
+        const existingEnv = (existing.env || {}) as Record<string, any>;
+        const extractedEnv = extracted.env as Record<string, any>;
+        merged.env = { ...existingEnv, ...extractedEnv };
       }
     }
     if (extracted.capabilities) {

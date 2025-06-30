@@ -107,7 +107,7 @@ router.post('/import', async (req, res) => {
     const server = {
       name: mcpConfig?.name || repoData.name,
       description: mcpConfig?.description || repoData.description || '',
-      repository: mcpConfig?.repository || {
+      repository: (mcpConfig as ExtractedConfig)?.repository || {
         url: repository_url,
         source: 'github',
         id: `${owner}/${repo}`,
@@ -123,16 +123,16 @@ router.post('/import', async (req, res) => {
         prompts: false,
         logging: false,
       },
-      installation: mcpConfig?.installation,
-      requirements: mcpConfig?.requirements,
-      packages: mcpConfig?.packages,
+      installation: (mcpConfig as ExtractedConfig)?.installation,
+      requirements: (mcpConfig as ExtractedConfig)?.requirements,
+      packages: (mcpConfig as ExtractedConfig)?.packages,
       metadata: {
         stars: repoData.stars,
         language: repoData.language,
         topics: repoData.topics,
         license: repoData.license,
         homepage: repoData.homepage,
-        version: mcpConfig?.version_detail?.version,
+        version: (mcpConfig as ExtractedConfig)?.version_detail?.version,
       },
     };
 
