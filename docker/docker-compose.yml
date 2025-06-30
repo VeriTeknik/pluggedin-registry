@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   registry-api:
     container_name: pluggedin-registry-api
