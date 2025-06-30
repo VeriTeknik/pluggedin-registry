@@ -11,7 +11,7 @@ This microservice provides:
 - ⚡ Redis caching for performance
 - 🔐 Server claiming and ownership system
 - 🌐 Hybrid public/private API architecture
-- 🤖 AI-powered configuration extraction (planned)
+- 🤖 AI-powered configuration extraction with OpenAI
 - 🔗 GitHub integration for repository scanning
 
 ## Architecture
@@ -33,6 +33,7 @@ This microservice provides:
 - Docker and Docker Compose
 - Node.js 18+
 - npm or pnpm
+- Python 3.8+ (for AI extraction features)
 
 ### Development Setup
 
@@ -53,12 +54,27 @@ cd docker
 docker-compose up -d
 ```
 
-4. Install dependencies:
+4. Install Node.js dependencies:
 ```bash
 npm install
 ```
 
-5. Run development server:
+5. Set up Python environment for AI extraction:
+```bash
+# Create a Python virtual environment
+python3 -m venv venv
+
+# Activate the virtual environment
+# On macOS/Linux:
+source venv/bin/activate
+# On Windows:
+# venv\Scripts\activate
+
+# Install Python dependencies
+pip install -r requirements.txt
+```
+
+6. Run development server:
 ```bash
 npm run dev
 ```
@@ -128,6 +144,33 @@ Filter by:
 - User rating
 - Last updated
 
+## AI-Powered Extraction
+
+The registry includes AI-powered configuration extraction for GitHub repositories that don't have explicit MCP configuration files.
+
+### How it works:
+1. Scans repository for `.mcp.json` or `.well-known/mcp.json`
+2. If not found, uses AI to analyze README and package.json
+3. Extracts configuration using OpenAI GPT-4
+4. Provides confidence scores and warnings
+
+### Python Setup:
+The AI extraction requires Python dependencies to be installed:
+
+```bash
+# Ensure Python virtual environment is activated
+source venv/bin/activate  # On macOS/Linux
+
+# Required environment variable
+export OPENAI_API_KEY="your-openai-api-key"
+```
+
+### Testing AI Extraction:
+```bash
+# Test the extraction script directly
+python src/scripts/extract_config.py --readme /path/to/README.md --package-json /path/to/package.json
+```
+
 ## Development
 
 ### Project Structure
@@ -184,6 +227,35 @@ Key variables:
 - `REDIS_URL` - Redis connection string
 - `PORT` - API server port
 - `NODE_ENV` - Environment (development/production)
+- `OPENAI_API_KEY` - OpenAI API key for AI extraction
+- `GITHUB_APP_ID` - GitHub App ID for repository access
+- `GITHUB_APP_PRIVATE_KEY` - Base64 encoded GitHub App private key
+- `INTERNAL_API_KEY` - API key for internal endpoints
+
+## Troubleshooting
+
+### Python/AI Extraction Issues
+
+1. **ModuleNotFoundError: No module named 'contextgem'**
+   - Make sure you've activated the virtual environment: `source venv/bin/activate`
+   - Install dependencies: `pip install -r requirements.txt`
+
+2. **OpenAI API errors**
+   - Verify your `OPENAI_API_KEY` is set in the `.env` file
+   - Check your OpenAI account has credits/valid subscription
+
+3. **Slow AI extraction (30-45 seconds)**
+   - This is normal on first run as contextgem loads the sentence segmentation model
+   - Subsequent runs will be faster due to caching
+
+### Docker Issues
+
+1. **Services won't start**
+   - Check all required environment variables are in `.env`
+   - Ensure ports 3001, 27017, 9200, 6379 are not in use
+
+2. **Elasticsearch memory errors**
+   - Adjust `ES_JAVA_OPTS` in `.env` (e.g., `-Xms256m -Xmx256m` for lower memory)
 
 ## Contributing
 

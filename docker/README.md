@@ -6,6 +6,7 @@ This directory contains Docker configuration for running the Plugged.in Registry
 
 - Docker and Docker Compose installed
 - `.env` file in the project root (copy from `.env.example`)
+- Python 3.8+ with virtual environment (for AI extraction features)
 
 ## Quick Start
 
@@ -61,3 +62,10 @@ docker-compose -f docker/docker-compose.yml up
 - If services fail to start, check that all required environment variables are set in your `.env` file
 - For Elasticsearch memory issues, adjust `ES_JAVA_OPTS` in your `.env` file
 - MongoDB initialization scripts are in `mongo-init.js`
+- For AI extraction features, ensure Python dependencies are installed:
+  ```bash
+  cd ..  # Go to project root
+  python3 -m venv venv
+  source venv/bin/activate
+  pip install -r requirements.txt
+  ```

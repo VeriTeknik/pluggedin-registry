@@ -45,3 +45,12 @@ redis_data/
 tmp/
 temp/
 .cache/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
